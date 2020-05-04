@@ -168,6 +168,11 @@ def set_stepper(step_list, delay):
 
 
 # -- Main Program --
+# TODO: Add Calibration section, min & max height (Optional if Hardcoded values)
+# TODO: Make Stepper know its own position in the world (See above)
+# TODO: Potmeter from raw value --> %
+# TODO: Optimise 'get_pot_tussen', multiply '*' by value derived from % (Single 'Return')
+# TODO: Multithread the application
 try:
     while True:
         # ----- Ultrasoon Sensor Readings + Print -----
