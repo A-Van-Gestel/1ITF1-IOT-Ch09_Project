@@ -1,7 +1,5 @@
 # Ch09 Project IOT — Lift via Stepper Motor & Potmeter, afstand tot grond via Ultrasoon sensor, alle waarden uitleesbaar op Nokia LCD 5110
 import cgitb
-
-cgitb.enable()
 import spidev
 import PIL
 import RPi.GPIO as GPIO
@@ -11,6 +9,9 @@ import Adafruit_GPIO.SPI as SPI
 from PIL import Image
 from PIL import ImageDraw
 from PIL import ImageFont
+import json
+import requests
+cgitb.enable()
 
 # -- Setup Pi GPIO Numbers --
 GPIO.setmode(GPIO.BCM)
@@ -62,12 +63,16 @@ GPIO.setup(Stepper_B, GPIO.OUT)  # Stepper B as output
 GPIO.setup(Stepper_C, GPIO.OUT)  # Stepper C as output
 GPIO.setup(Stepper_D, GPIO.OUT)  # Stepper D as output
 
+# ------ UBEAC User Info ------
+url = "TEMP_URL"
+uid = "TEMP_ID"
+
 # -- Setup variables --
 # Setup delay_stepper between Steps (1 = 1ms)
 delay_stepper = 10
 # delay_stepper to ms
 delay_ms_stepper = delay_stepper / 1000
-
+# Full Step motor pattern
 stepper_FullStep = [(1, 0, 1, 0),
                     (0, 1, 1, 0),
                     (0, 1, 0, 1),
@@ -84,8 +89,22 @@ def readadc(adcnum):
     return adcout
 
 
+# Sent data to UBEAC
+def sent_ubeac(channel, channelname):
+    data = {
+        "id": uid,
+        "sensors": [{
+            'id': channelname,
+            'data': channel
+        }]
+    }
+    r = requests.post(url, verify=False, json=data)
+    print(r.status_code, channel)
+    time.sleep(1)
+
+
 # Get Distance from Ultrasoon sensor (HC-SR04)
-def ultrasoon(trans, receiv):  # Return distance in mm
+def ultrasoon(trans, receiv):  # Return distance in cm
     GPIO.output(trans, 1)
     time.sleep(0.00001)
     GPIO.output(trans, 0)
@@ -97,7 +116,7 @@ def ultrasoon(trans, receiv):  # Return distance in mm
         time_low = time.time()
     # Get the total passed time between time low & high
     time_passed = time_low - time_high
-    return time_passed * 170000
+    return time_passed * 17000
 
 
 # Pot waarde --> *
@@ -153,7 +172,7 @@ try:
     while True:
         # ----- Ultrasoon Sensor Readings + Print -----
         distance = ultrasoon(ultrasoon_tra, ultrasoon_rec)  # Get the distance
-        print("Distance = " + str((round(distance, 2))) + "mm")
+        print("Distance = " + str((round(distance, 2))) + "cm")
 
         # ----- Potmeter + Print to LCD -----
         pot = readadc(0)  # Get waarde Potmeter from ADC Channel 0
@@ -181,6 +200,9 @@ try:
             time.sleep(1)
         else:
             print("Stepper: NO STEP")
+
+        # ----- Sent to UBEAC -----
+        sent_ubeac(distance, 'Distance Platform')
 
 
 except KeyboardInterrupt:
