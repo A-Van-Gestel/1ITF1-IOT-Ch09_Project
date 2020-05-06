@@ -94,6 +94,7 @@ stepper_state = ""
 pot = 0.0
 distance = 0.0
 
+
 # -- Setup Functions --
 # read SPI data: 8 possible adc's (0 thru 7)
 def readadc(adcnum):
@@ -185,7 +186,7 @@ def set_stepper(step_list, delay):
 
 def get_height_needed(pot_value, height_min, height_max):
     height_total = height_max - height_min
-    return height_total * pot_value/100
+    return height_total * pot_value / 100
 
 
 # ----- Multithreading stuff -----
@@ -199,31 +200,23 @@ def steppermotor(threadName, delay, margin):
         while True:
             height_needed = get_height_needed(pot, height_min, height_max)
             if abs(distance - height_needed) > margin:
-                if distance > height_needed:
-                    backwards_step(delay)
+                if distance > height_needed:    # If current distance is higher than Target distance
+                    backwards_step(delay)   # Lift goes down
                     stepper_state = "Down"
-                else:
-                    forward_step(delay)
+                else:                           # If current distance is lower than Target distance
+                    forward_step(delay)     # Lift goes up
                     stepper_state = "Up"
             else:
                 stepper_state = "Idle"
 
-            # ----- Stepper Motor -----
-            # if pot > 65:
-            #     forward_step(delay)
-            #     stepper_state = "Up"
-            # elif pot < 55:
-            #     backwards_step(delay)
-            #     stepper_state = "Down"
-            # else:
-            #     stepper_state = "Idle"
-
     except KeyboardInterrupt:
         GPIO.cleanup()
+
 
 # -- Start separate threads --
 try:
     _thread.start_new_thread(steppermotor, ("StepperMotor-Thread", delay_ms_stepper, margin))
+
 except:
     print("Error: unable to start thread")
 
@@ -233,31 +226,35 @@ except:
 # TODO: Multithread the application (Stepper done)
 try:
     while True:
-        # ----- Ultrasoon Sensor Readings + Print -----
-        distance = ultrasoon(ultrasoon_tra, ultrasoon_rec)  # Get the distance
-        print("Distance = " + str(round(distance, 2)) + "cm")
+        # ----- Ultrasoon Sensor Readings -----
+        distance = ultrasoon(ultrasoon_tra, ultrasoon_rec)  # Get the distance in cm
+        needed = get_height_needed(pot, height_min, height_max)  # Get the target distance in cm
 
-        # ----- Potmeter + Print to LCD -----
+        # ----- Potmeter -----
         pot = readadc(0) / 1023 * 100  # Get waarde Potmeter from ADC Channel 0
+
+        # ----- Print to LCD -----
         # Clear LCD Screen
         draw.rectangle((0, 0, LCD.LCDWIDTH, LCD.LCDHEIGHT), outline=255, fill=255)
-        # Write some text
-        draw.text((1, 0), "Stepper: " + stepper_state, font=font)
-        draw.text((1, 8), "POT= " + str(round(pot, 2)) + "%", font=font)
-        draw.text((1, 16), str(get_pot_tussen(pot * 1023 / 100)), font=font)
-        draw.text((1, 24), "Dist= " + str(round(distance, 1)) + "cm", font=font)
-        draw.text((1, 32), "Need= " + str(round(get_height_needed(pot, height_min, height_max), 1)) + "cm", font=font)
+        # Write data to Screen
+        draw.text((1, 0), "Stepper: " + stepper_state, font=font)   # Write the Stepper State (Idle, Up, Down)
+        draw.text((1, 8), "POT: " + str(round(pot, 2)) + "%", font=font)    # Write the Potmeter Value in %
+        draw.text((1, 16), str(get_pot_tussen(pot * 1023 / 100)), font=font)    # Write the * reeks based on the Potmeter Value
+        draw.text((1, 24), "Dist: " + str(round(distance, 1)) + "cm", font=font)    # Write the current distance in cm
+        draw.text((1, 32), "Need: " + str(round(needed, 1)) + "cm", font=font)  # Write the Target Distance in cm
         disp.image(image)
         disp.display()
-        # Print Pot waarde + * reeks
-        print("ADC Pot = " + str(round(pot, 2)) + "%", end="\t")
-        print(get_pot_tussen(pot * 1023 / 100))
+
+        # ----- Print to Console -----
+        print("Stepper: " + stepper_state)   # Write the Stepper State (Idle, Up, Down)
+        print("POT: " + str(round(pot, 2)) + "%", end="\t")    # Write the Potmeter Value in %
+        print(get_pot_tussen(pot * 1023 / 100))    # Write the * reeks based on the Potmeter Value
+        print("Distance: " + str(round(distance, 2)) + "cm")    # Write the current distance in cm
+        print("Needed: " + str(round(needed, 1)) + "cm")  # Write the Target Distance in cm
+        print()
 
         # ----- Sent to UBEAC -----
         # sent_ubeac(distance, 'Distance Platform')
-
-        print()
-
 
 except KeyboardInterrupt:
     GPIO.cleanup()
