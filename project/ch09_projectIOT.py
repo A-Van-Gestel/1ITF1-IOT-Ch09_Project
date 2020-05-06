@@ -1,4 +1,5 @@
 # Ch09 Project IOT — Lift via Stepper Motor & Potmeter, afstand tot grond via Ultrasoon sensor, alle waarden uitleesbaar op Nokia LCD 5110
+import sys
 import spidev
 import PIL
 import RPi.GPIO as GPIO
@@ -72,7 +73,7 @@ uid = "TEMP_ID"
 # -- Setup variables --
 # Set min & max height
 height_min = 3
-height_max = 26
+height_max = 16
 # Max Margin between current & needed height
 margin = 0.5
 # Setup delay_stepper between Steps (1 = 1ms)
@@ -93,6 +94,7 @@ stepper_FullStep = [(1, 0, 0, 0),
 stepper_state = ""
 pot = 0.0
 distance = 0.0
+needed = 0.0
 
 
 # -- Setup Functions --
@@ -186,7 +188,8 @@ def set_stepper(step_list, delay):
 
 def get_height_needed(pot_value, height_min, height_max):
     height_total = height_max - height_min
-    return height_total * pot_value / 100
+    return (
+                       height_total * pot_value / 100) + height_min  # Calculate Target Distance based on Potmeter Value & set Correct min height
 
 
 # ----- Multithreading stuff -----
@@ -200,25 +203,60 @@ def steppermotor(threadName, delay, margin):
         while True:
             height_needed = get_height_needed(pot, height_min, height_max)
             if abs(distance - height_needed) > margin:
-                if distance > height_needed:    # If current distance is higher than Target distance
-                    backwards_step(delay)   # Lift goes down
+                if distance > height_needed:  # If current distance is higher than Target distance
+                    backwards_step(delay)  # Lift goes down
                     stepper_state = "Down"
-                else:                           # If current distance is lower than Target distance
-                    forward_step(delay)     # Lift goes up
+                else:  # If current distance is lower than Target distance
+                    forward_step(delay)  # Lift goes up
                     stepper_state = "Up"
             else:
                 stepper_state = "Idle"
 
     except KeyboardInterrupt:
+        print(threadName + "Stopped")
+        GPIO.cleanup()
+
+
+# -- Ultrasoon Sensor + Potmeter readings --
+def Sensor_readings(threadName, delay):
+    global distance
+    global needed
+    global pot
+    try:
+        while True:
+            # ----- Ultrasoon Sensor Readings -----
+            distance = ultrasoon(ultrasoon_tra, ultrasoon_rec)  # Get the distance in cm
+            needed = get_height_needed(pot, height_min, height_max)  # Get the target distance in cm
+            # ----- Potmeter -----
+            pot = readadc(0) / 1023 * 100  # Get waarde Potmeter from ADC Channel 0
+            time.sleep(delay)
+
+    except KeyboardInterrupt:
+        print(threadName + "Stopped")
+        GPIO.cleanup()
+
+
+# -- Sent Data to UBEAC --
+def UBEAC_Sent(threadName, delay):
+    try:
+        while True:
+            # ----- Sent to UBEAC -----
+            # sent_ubeac(distance, 'Distance Platform')
+            time.sleep(delay)
+
+    except KeyboardInterrupt:
+        print(threadName + "Stopped")
         GPIO.cleanup()
 
 
 # -- Start separate threads --
 try:
     _thread.start_new_thread(steppermotor, ("StepperMotor-Thread", delay_ms_stepper, margin))
+    _thread.start_new_thread(Sensor_readings, ("Sensor_readings-Thread", 0.5))
+    _thread.start_new_thread(UBEAC_Sent, ("UBEAC_Sent-Thread", 2))
 
 except:
-    print("Error: unable to start thread")
+    sys.exit("Error: unable to start threads")
 
 # -- Main Program --
 # TODO: Add Calibration section, min & max height (Optional if Hardcoded values)
@@ -226,35 +264,26 @@ except:
 # TODO: Multithread the application (Stepper done)
 try:
     while True:
-        # ----- Ultrasoon Sensor Readings -----
-        distance = ultrasoon(ultrasoon_tra, ultrasoon_rec)  # Get the distance in cm
-        needed = get_height_needed(pot, height_min, height_max)  # Get the target distance in cm
-
-        # ----- Potmeter -----
-        pot = readadc(0) / 1023 * 100  # Get waarde Potmeter from ADC Channel 0
-
         # ----- Print to LCD -----
         # Clear LCD Screen
         draw.rectangle((0, 0, LCD.LCDWIDTH, LCD.LCDHEIGHT), outline=255, fill=255)
         # Write data to Screen
-        draw.text((1, 0), "Stepper: " + stepper_state, font=font)   # Write the Stepper State (Idle, Up, Down)
-        draw.text((1, 8), "POT: " + str(round(pot, 2)) + "%", font=font)    # Write the Potmeter Value in %
-        draw.text((1, 16), str(get_pot_tussen(pot * 1023 / 100)), font=font)    # Write the * reeks based on the Potmeter Value
-        draw.text((1, 24), "Dist: " + str(round(distance, 1)) + "cm", font=font)    # Write the current distance in cm
+        draw.text((1, 0), "Stepper: " + stepper_state, font=font)  # Write the Stepper State (Idle, Up, Down)
+        draw.text((1, 8), "POT: " + str(round(pot, 2)) + "%", font=font)  # Write the Potmeter Value in %
+        draw.text((1, 16), str(get_pot_tussen(pot * 1023 / 100)),
+                  font=font)  # Write the * reeks based on the Potmeter Value
+        draw.text((1, 24), "Dist: " + str(round(distance, 1)) + "cm", font=font)  # Write the current distance in cm
         draw.text((1, 32), "Need: " + str(round(needed, 1)) + "cm", font=font)  # Write the Target Distance in cm
         disp.image(image)
         disp.display()
 
         # ----- Print to Console -----
-        print("Stepper: " + stepper_state)   # Write the Stepper State (Idle, Up, Down)
-        print("POT: " + str(round(pot, 2)) + "%", end="\t")    # Write the Potmeter Value in %
-        print(get_pot_tussen(pot * 1023 / 100))    # Write the * reeks based on the Potmeter Value
-        print("Distance: " + str(round(distance, 2)) + "cm")    # Write the current distance in cm
+        print("Stepper: " + stepper_state)  # Write the Stepper State (Idle, Up, Down)
+        print("POT: " + str(round(pot, 2)) + "%", end="\t")  # Write the Potmeter Value in %
+        print(get_pot_tussen(pot * 1023 / 100))  # Write the * reeks based on the Potmeter Value
+        print("Distance: " + str(round(distance, 2)) + "cm")  # Write the current distance in cm
         print("Needed: " + str(round(needed, 1)) + "cm")  # Write the Target Distance in cm
         print()
-
-        # ----- Sent to UBEAC -----
-        # sent_ubeac(distance, 'Distance Platform')
 
 except KeyboardInterrupt:
     GPIO.cleanup()
