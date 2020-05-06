@@ -13,9 +13,6 @@ import json
 import requests
 import _thread
 
-# import cgitb
-# cgitb.enable()
-
 # -- Setup Pi GPIO Numbers --
 GPIO.setmode(GPIO.BCM)
 
@@ -140,28 +137,8 @@ def ultrasoon(trans, receiv):  # Return distance in cm
 
 # Pot waarde --> *
 def get_pot_tussen(pot_value):
-    if 0 <= pot_value <= 100:
-        return ""
-    elif 100 < pot_value <= 200:
-        return "*"
-    elif 200 < pot_value <= 300:
-        return "**"
-    elif 300 < pot_value <= 400:
-        return "***"
-    elif 400 < pot_value <= 500:
-        return "****"
-    elif 500 < pot_value <= 600:
-        return "*****"
-    elif 600 < pot_value <= 700:
-        return "******"
-    elif 700 < pot_value <= 800:
-        return "*******"
-    elif 800 < pot_value <= 900:
-        return "********"
-    elif 900 < pot_value <= 1000:
-        return "*********"
-    else:
-        return "**********"
+    star_count = 14 * pot_value/100
+    return round(star_count) * "*"
 
 
 # Stepper --> Forward
@@ -188,8 +165,7 @@ def set_stepper(step_list, delay):
 
 def get_height_needed(pot_value, height_min, height_max):
     height_total = height_max - height_min
-    return (
-                       height_total * pot_value / 100) + height_min  # Calculate Target Distance based on Potmeter Value & set Correct min height
+    return (height_total * pot_value / 100) + height_min  # Calculate Target Distance based on Potmeter Value & set Correct min height
 
 
 # ----- Multithreading stuff -----
@@ -260,8 +236,7 @@ except:
 
 # -- Main Program --
 # TODO: Add Calibration section, min & max height (Optional if Hardcoded values)
-# TODO: Optimise 'get_pot_tussen', multiply '*' by value derived from % (Single 'Return')
-# TODO: Multithread the application (Stepper done)
+# TODO: Multithread the application (Stepper done, Sensors done, UEAC in progress)
 try:
     while True:
         # ----- Print to LCD -----
@@ -270,8 +245,7 @@ try:
         # Write data to Screen
         draw.text((1, 0), "Stepper: " + stepper_state, font=font)  # Write the Stepper State (Idle, Up, Down)
         draw.text((1, 8), "POT: " + str(round(pot, 2)) + "%", font=font)  # Write the Potmeter Value in %
-        draw.text((1, 16), str(get_pot_tussen(pot * 1023 / 100)),
-                  font=font)  # Write the * reeks based on the Potmeter Value
+        draw.text((1, 16), str(get_pot_tussen(pot)),font=font)  # Write the * reeks based on the Potmeter Value
         draw.text((1, 24), "Dist: " + str(round(distance, 1)) + "cm", font=font)  # Write the current distance in cm
         draw.text((1, 32), "Need: " + str(round(needed, 1)) + "cm", font=font)  # Write the Target Distance in cm
         disp.image(image)
@@ -280,10 +254,15 @@ try:
         # ----- Print to Console -----
         print("Stepper: " + stepper_state)  # Write the Stepper State (Idle, Up, Down)
         print("POT: " + str(round(pot, 2)) + "%", end="\t")  # Write the Potmeter Value in %
-        print(get_pot_tussen(pot * 1023 / 100))  # Write the * reeks based on the Potmeter Value
+        print(get_pot_tussen(pot))  # Write the * reeks based on the Potmeter Value
         print("Distance: " + str(round(distance, 2)) + "cm")  # Write the current distance in cm
         print("Needed: " + str(round(needed, 1)) + "cm")  # Write the Target Distance in cm
         print()
 
 except KeyboardInterrupt:
+    # Clear LCD Screen
+    draw.rectangle((0, 0, LCD.LCDWIDTH, LCD.LCDHEIGHT), outline=255, fill=255)
+    disp.image(image)
+    disp.display()
+    # Clear GPIO Pins
     GPIO.cleanup()
