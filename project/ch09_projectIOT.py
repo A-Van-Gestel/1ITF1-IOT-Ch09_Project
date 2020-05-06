@@ -70,6 +70,11 @@ url = "TEMP_URL"
 uid = "TEMP_ID"
 
 # -- Setup variables --
+# Set min & max height
+height_min = 3
+height_max = 26
+# Max Margin between current & needed height
+margin = 0.5
 # Setup delay_stepper between Steps (1 = 1ms)
 delay_stepper = 0.1
 # delay_stepper to ms
@@ -84,8 +89,10 @@ stepper_FullStep = [(1, 0, 0, 0),
                     (0, 0, 0, 1),
                     (1, 0, 0, 1)]
 
+# Global variables
 stepper_state = ""
 pot = 0.0
+distance = 0.0
 
 # -- Setup Functions --
 # read SPI data: 8 possible adc's (0 thru 7)
@@ -176,46 +183,54 @@ def set_stepper(step_list, delay):
     time.sleep(delay)
 
 
-# -- Multithreading stuff --
+def get_height_needed(pot_value, height_min, height_max):
+    height_total = height_max - height_min
+    return height_total * pot_value/100
+
+
+# ----- Multithreading stuff -----
 # Define functions for each thread
-def steppermotor(threadName, delay):
+# -- Stepper Motor control based on height
+def steppermotor(threadName, delay, margin):
     global stepper_state
     global pot
+    global distance
     try:
         while True:
-            # if heigt_current != heigt_needed:
-            #     if heigt_current < heigt_needed:
-            #         backwards_step(delay_ms_stepper)
-            #         # print("Stepper: backwards step")
-            #     else:
-            #         forward_step(delay_ms_stepper)
-            #         # print("Stepper: forward step")
+            height_needed = get_height_needed(pot, height_min, height_max)
+            if abs(distance - height_needed) > margin:
+                if distance < height_needed:
+                    backwards_step(delay)
+                    stepper_state = "Up"
+                else:
+                    forward_step(delay)
+                    stepper_state = "Down"
+            else:
+                stepper_state = "Idle"
 
             # ----- Stepper Motor -----
-            if pot > 65:
-                forward_step(delay)
-                stepper_state = "forward"
-            elif pot < 55:
-                backwards_step(delay)
-                stepper_state = "backwards"
-            else:
-                stepper_state = "NO STEP"
+            # if pot > 65:
+            #     forward_step(delay)
+            #     stepper_state = "Up"
+            # elif pot < 55:
+            #     backwards_step(delay)
+            #     stepper_state = "Down"
+            # else:
+            #     stepper_state = "Idle"
 
     except KeyboardInterrupt:
         GPIO.cleanup()
 
-# Start separate threads
+# -- Start separate threads --
 try:
-    _thread.start_new_thread(steppermotor, ("StepperMotor-Thread", delay_ms_stepper))
+    _thread.start_new_thread(steppermotor, ("StepperMotor-Thread", delay_ms_stepper, margin))
 except:
     print("Error: unable to start thread")
 
 # -- Main Program --
 # TODO: Add Calibration section, min & max height (Optional if Hardcoded values)
-# TODO: Make Stepper know its own position in the world (See above)
-# TODO: Potmeter from raw value --> %
 # TODO: Optimise 'get_pot_tussen', multiply '*' by value derived from % (Single 'Return')
-# TODO: Multithread the application
+# TODO: Multithread the application (Stepper done)
 try:
     while True:
         # ----- Ultrasoon Sensor Readings + Print -----
@@ -227,11 +242,11 @@ try:
         # Clear LCD Screen
         draw.rectangle((0, 0, LCD.LCDWIDTH, LCD.LCDHEIGHT), outline=255, fill=255)
         # Write some text
-        draw.text((1, 0), stepper_state, font=font)
-        draw.text((1, 8), "on display", font=font)
-        draw.text((1, 16), "POT= " + str(round(pot, 2)) + "%", font=font)
-        draw.text((1, 24), str(get_pot_tussen(pot * 1023 / 100)), font=font)
-        draw.text((1, 32), "Dist= " + str(round(distance, 1)) + "cm", font=font)
+        draw.text((1, 0), "Stepper: " + stepper_state, font=font)
+        draw.text((1, 8), "POT= " + str(round(pot, 2)) + "%", font=font)
+        draw.text((1, 16), str(get_pot_tussen(pot * 1023 / 100)), font=font)
+        draw.text((1, 24), "Dist= " + str(round(distance, 1)) + "cm", font=font)
+        draw.text((1, 32), "Need= " + str(round(get_height_needed(pot, height_min, height_max), 1)) + "cm", font=font)
         disp.image(image)
         disp.display()
         # Print Pot waarde + * reeks
