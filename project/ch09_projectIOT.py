@@ -1,5 +1,4 @@
 # Ch09 Project IOT — Lift via Stepper Motor & Potmeter, afstand tot grond via Ultrasoon sensor, alle waarden uitleesbaar op Nokia LCD 5110
-import cgitb
 import spidev
 import PIL
 import RPi.GPIO as GPIO
@@ -11,7 +10,10 @@ from PIL import ImageDraw
 from PIL import ImageFont
 import json
 import requests
-cgitb.enable()
+import _thread
+
+# import cgitb
+# cgitb.enable()
 
 # -- Setup Pi GPIO Numbers --
 GPIO.setmode(GPIO.BCM)
@@ -69,15 +71,21 @@ uid = "TEMP_ID"
 
 # -- Setup variables --
 # Setup delay_stepper between Steps (1 = 1ms)
-delay_stepper = 10
+delay_stepper = 0.1
 # delay_stepper to ms
 delay_ms_stepper = delay_stepper / 1000
 # Full Step motor pattern
-stepper_FullStep = [(1, 0, 1, 0),
+stepper_FullStep = [(1, 0, 0, 0),
+                    (1, 1, 0, 0),
+                    (0, 1, 0, 0),
                     (0, 1, 1, 0),
-                    (0, 1, 0, 1),
+                    (0, 0, 1, 0),
+                    (0, 0, 1, 1),
+                    (0, 0, 0, 1),
                     (1, 0, 0, 1)]
 
+stepper_state = ""
+pot = 0.0
 
 # -- Setup Functions --
 # read SPI data: 8 possible adc's (0 thru 7)
@@ -105,6 +113,7 @@ def sent_ubeac(channel, channelname):
 
 # Get Distance from Ultrasoon sensor (HC-SR04)
 def ultrasoon(trans, receiv):  # Return distance in cm
+    global time_high, time_low
     GPIO.output(trans, 1)
     time.sleep(0.00001)
     GPIO.output(trans, 0)
@@ -120,26 +129,26 @@ def ultrasoon(trans, receiv):  # Return distance in cm
 
 
 # Pot waarde --> *
-def get_pot_tussen(pot):
-    if 0 <= pot <= 100:
+def get_pot_tussen(pot_value):
+    if 0 <= pot_value <= 100:
         return ""
-    elif 100 < pot <= 200:
+    elif 100 < pot_value <= 200:
         return "*"
-    elif 200 < pot <= 300:
+    elif 200 < pot_value <= 300:
         return "**"
-    elif 300 < pot <= 400:
+    elif 300 < pot_value <= 400:
         return "***"
-    elif 400 < pot <= 500:
+    elif 400 < pot_value <= 500:
         return "****"
-    elif 500 < pot <= 600:
+    elif 500 < pot_value <= 600:
         return "*****"
-    elif 600 < pot <= 700:
+    elif 600 < pot_value <= 700:
         return "******"
-    elif 700 < pot <= 800:
+    elif 700 < pot_value <= 800:
         return "*******"
-    elif 800 < pot <= 900:
+    elif 800 < pot_value <= 900:
         return "********"
-    elif 900 < pot <= 1000:
+    elif 900 < pot_value <= 1000:
         return "*********"
     else:
         return "**********"
@@ -153,8 +162,8 @@ def forward_step(delay):
 
 # Stepper --> Backwards
 def backwards_step(delay):
-    stepper_FullStep.reverse()
-    for step in stepper_FullStep:
+    # Go trough "stepper_FullStep" in reverse order
+    for step in stepper_FullStep[::-1]:
         set_stepper(step, delay)
 
 
@@ -167,6 +176,40 @@ def set_stepper(step_list, delay):
     time.sleep(delay)
 
 
+# -- Multithreading stuff --
+# Define functions for each thread
+def steppermotor(threadName, delay):
+    global stepper_state
+    global pot
+    try:
+        while True:
+            # if heigt_current != heigt_needed:
+            #     if heigt_current < heigt_needed:
+            #         backwards_step(delay_ms_stepper)
+            #         # print("Stepper: backwards step")
+            #     else:
+            #         forward_step(delay_ms_stepper)
+            #         # print("Stepper: forward step")
+
+            # ----- Stepper Motor -----
+            if pot > 65:
+                forward_step(delay)
+                stepper_state = "forward"
+            elif pot < 55:
+                backwards_step(delay)
+                stepper_state = "backwards"
+            else:
+                stepper_state = "NO STEP"
+
+    except KeyboardInterrupt:
+        GPIO.cleanup()
+
+# Start separate threads
+try:
+    _thread.start_new_thread(steppermotor, ("StepperMotor-Thread", delay_ms_stepper))
+except:
+    print("Error: unable to start thread")
+
 # -- Main Program --
 # TODO: Add Calibration section, min & max height (Optional if Hardcoded values)
 # TODO: Make Stepper know its own position in the world (See above)
@@ -177,37 +220,28 @@ try:
     while True:
         # ----- Ultrasoon Sensor Readings + Print -----
         distance = ultrasoon(ultrasoon_tra, ultrasoon_rec)  # Get the distance
-        print("Distance = " + str((round(distance, 2))) + "cm")
+        print("Distance = " + str(round(distance, 2)) + "cm")
 
         # ----- Potmeter + Print to LCD -----
-        pot = readadc(0)  # Get waarde Potmeter from ADC Channel 0
+        pot = readadc(0) / 1023 * 100  # Get waarde Potmeter from ADC Channel 0
         # Clear LCD Screen
         draw.rectangle((0, 0, LCD.LCDWIDTH, LCD.LCDHEIGHT), outline=255, fill=255)
         # Write some text
-        draw.text((1, 0), "ADC value", font=font)
+        draw.text((1, 0), stepper_state, font=font)
         draw.text((1, 8), "on display", font=font)
-        draw.text((1, 16), "in0=" + str(pot), font=font)
-        draw.text((1, 24), str(get_pot_tussen(pot)), font=font)
+        draw.text((1, 16), "POT= " + str(round(pot, 2)) + "%", font=font)
+        draw.text((1, 24), str(get_pot_tussen(pot * 1023 / 100)), font=font)
+        draw.text((1, 32), "Dist= " + str(round(distance, 1)) + "cm", font=font)
         disp.image(image)
         disp.display()
         # Print Pot waarde + * reeks
-        print("ADC Pot = " + str(pot), end="\t")
-        print(get_pot_tussen(pot))
-
-        # ----- Stepper Motor -----
-        if pot > 652:
-            forward_step(delay_ms_stepper)
-            print("Stepper: forward step")
-            time.sleep(1)
-        elif pot < 461:
-            backwards_step(delay_ms_stepper)
-            print("Stepper: backwards step")
-            time.sleep(1)
-        else:
-            print("Stepper: NO STEP")
+        print("ADC Pot = " + str(round(pot, 2)) + "%", end="\t")
+        print(get_pot_tussen(pot * 1023 / 100))
 
         # ----- Sent to UBEAC -----
-        sent_ubeac(distance, 'Distance Platform')
+        # sent_ubeac(distance, 'Distance Platform')
+
+        print()
 
 
 except KeyboardInterrupt:
