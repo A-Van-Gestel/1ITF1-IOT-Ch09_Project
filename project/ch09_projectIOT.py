@@ -199,12 +199,12 @@ def steppermotor(threadName, delay, margin):
         while True:
             height_needed = get_height_needed(pot, height_min, height_max)
             if abs(distance - height_needed) > margin:
-                if distance < height_needed:
+                if distance > height_needed:
                     backwards_step(delay)
-                    stepper_state = "Up"
+                    stepper_state = "Down"
                 else:
                     forward_step(delay)
-                    stepper_state = "Down"
+                    stepper_state = "Up"
             else:
                 stepper_state = "Idle"
 
