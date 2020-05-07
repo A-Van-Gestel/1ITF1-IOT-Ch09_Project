@@ -14,4 +14,4 @@ IOT Project (Chapter 9)
 
 ## Info UBEAC
 If you want to use UBEAC you need to edit the `URL` & `UID` variables in the Python Script.
-The `sent_ubeac(value, channel_name)` might also need some editing based on your own setup.
+The `sent_ubeac(value, channel_name)` needs to be uncommented and might need some editing based on your own setup.
