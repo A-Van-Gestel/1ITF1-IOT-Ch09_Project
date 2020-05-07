@@ -71,10 +71,12 @@ uid = "TEMP_ID"
 # Set min & max height
 height_min = 3
 height_max = 16
-# Max Margin between current & needed height
-margin = 0.5
+# Max Margin in cm between current & needed height
+margin = 0.35
+# Calculate average of how manny Current height readings (Warning: Increases delay between readings)
+smoothing = 1
 # Setup delay_stepper between Steps (1 = 1ms)
-delay_stepper = 0.1
+delay_stepper = 1
 # delay_stepper to ms
 delay_ms_stepper = delay_stepper / 1000
 # Full Step motor pattern
@@ -87,11 +89,12 @@ stepper_FullStep = [(1, 0, 0, 0),
                     (0, 0, 0, 1),
                     (1, 0, 0, 1)]
 
-# Global variables
+# -- Global variables --
 stepper_state = ""
 pot = 0.0
 distance = 0.0
 needed = 0.0
+time_passed_smoothed = 0.0
 
 
 # -- Setup Functions --
@@ -119,20 +122,30 @@ def sent_ubeac(channel, channelname):
 
 
 # Get Distance from Ultrasoon sensor (HC-SR04)
-def ultrasoon(trans, receiv):  # Return distance in cm
+def ultrasoon(trans, receiv, smoothing):  # Return distance in cm
     global time_high, time_low
-    GPIO.output(trans, 1)
-    time.sleep(0.00001)
-    GPIO.output(trans, 0)
-    # Wait for the receiver to turn high & get the current time
-    while GPIO.input(receiv) == 0:
-        time_high = time.time()
-    # Wait for the receiver to turn low & get the current time
-    while GPIO.input(receiv) == 1:
-        time_low = time.time()
-    # Get the total passed time between time low & high
-    time_passed = time_low - time_high
-    return time_passed * 17000
+    global time_passed_smoothed
+    time_passed_smoothed = 0.0
+
+    for i in range(0, smoothing):
+        GPIO.output(trans, 1)
+        time.sleep(0.00001)
+        GPIO.output(trans, 0)
+        # Wait for the receiver to turn high & get the current time
+        while GPIO.input(receiv) == 0:
+            time_high = time.time()
+        # Wait for the receiver to turn low & get the current time
+        while GPIO.input(receiv) == 1:
+            time_low = time.time()
+        # Get the total passed time between time low & high
+        time_passed = time_low - time_high
+        time_passed_smoothed += time_passed
+        i += 1
+        #
+        if smoothing > 1:
+            time.sleep(0.05)
+    # Return smoothed time by Averaging the readings
+    return (time_passed_smoothed / smoothing) * 17000
 
 
 # Pot waarde --> *
@@ -201,7 +214,7 @@ def Sensor_readings(threadName, delay):
     try:
         while True:
             # ----- Ultrasoon Sensor Readings -----
-            distance = ultrasoon(ultrasoon_tra, ultrasoon_rec)  # Get the distance in cm
+            distance = ultrasoon(ultrasoon_tra, ultrasoon_rec, smoothing)  # Get the distance in cm
             needed = get_height_needed(pot, height_min, height_max)  # Get the target distance in cm
             # ----- Potmeter -----
             pot = readadc(0) / 1023 * 100  # Get waarde Potmeter from ADC Channel 0
