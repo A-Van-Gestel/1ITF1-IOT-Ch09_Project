@@ -72,7 +72,9 @@ uid = "TEMP_ID"
 height_min = 3
 height_max = 16
 # Max Margin in cm between current & needed height
-margin = 0.35
+margin = 0.5
+# Upper Margin in cm where motor speed is reduced
+margin_upper = margin + 1
 # Calculate average of how manny Current height readings (Warning: Increases delay between readings)
 smoothing = 1
 # Setup delay_stepper between Steps (1 = 1ms)
@@ -150,7 +152,7 @@ def ultrasoon(trans, receiv, smoothing):  # Return distance in cm
 
 # Pot waarde --> *
 def get_pot_tussen(pot_value):
-    star_count = 14 * pot_value/100
+    star_count = 14 * pot_value / 100
     return round(star_count) * "*"
 
 
@@ -167,6 +169,11 @@ def backwards_step(delay):
         set_stepper(step, delay)
 
 
+# Stepper --> Idle
+def idle_step():
+    set_stepper([0, 0, 0, 0], 0)
+
+
 # Stepper - Step list
 def set_stepper(step_list, delay):
     GPIO.output(Stepper_A, step_list[0])
@@ -178,13 +185,14 @@ def set_stepper(step_list, delay):
 
 def get_height_needed(pot_value, height_min, height_max):
     height_total = height_max - height_min
-    return (height_total * pot_value / 100) + height_min  # Calculate Target Distance based on Potmeter Value & set Correct min height
+    return (
+                   height_total * pot_value / 100) + height_min  # Calculate Target Distance based on Potmeter Value & set Correct min height
 
 
 # ----- Multithreading stuff -----
 # Define functions for each thread
 # -- Stepper Motor control based on height
-def steppermotor(threadName, delay, margin):
+def steppermotor(threadName, delay_fast, delay_slow, margin, margin_upper):
     global stepper_state
     global pot
     global distance
@@ -192,6 +200,10 @@ def steppermotor(threadName, delay, margin):
         while True:
             height_needed = get_height_needed(pot, height_min, height_max)
             if abs(distance - height_needed) > margin:
+                if abs(distance - height_needed) < margin_upper:  # If difference is lower than Upper Margin
+                    delay = delay_slow  # Slow the motor down
+                else:
+                    delay = delay_fast
                 if distance > height_needed:  # If current distance is higher than Target distance
                     backwards_step(delay)  # Lift goes down
                     stepper_state = "Down"
@@ -199,6 +211,7 @@ def steppermotor(threadName, delay, margin):
                     forward_step(delay)  # Lift goes up
                     stepper_state = "Up"
             else:
+                idle_step()  # Lift goes Idle
                 stepper_state = "Idle"
 
     except KeyboardInterrupt:
@@ -240,7 +253,7 @@ def UBEAC_Sent(threadName, delay):
 
 # -- Start separate threads --
 try:
-    _thread.start_new_thread(steppermotor, ("StepperMotor-Thread", delay_ms_stepper, margin))
+    _thread.start_new_thread(steppermotor, ("StepperMotor-Thread", delay_ms_stepper, 0.02, margin, margin_upper))
     _thread.start_new_thread(Sensor_readings, ("Sensor_readings-Thread", 0.5))
     _thread.start_new_thread(UBEAC_Sent, ("UBEAC_Sent-Thread", 2))
 
@@ -258,7 +271,7 @@ try:
         # Write data to Screen
         draw.text((1, 0), "Stepper: " + stepper_state, font=font)  # Write the Stepper State (Idle, Up, Down)
         draw.text((1, 8), "POT: " + str(round(pot, 2)) + "%", font=font)  # Write the Potmeter Value in %
-        draw.text((1, 16), str(get_pot_tussen(pot)),font=font)  # Write the * reeks based on the Potmeter Value
+        draw.text((1, 16), str(get_pot_tussen(pot)), font=font)  # Write the * reeks based on the Potmeter Value
         draw.text((1, 24), "Dist: " + str(round(distance, 1)) + "cm", font=font)  # Write the current distance in cm
         draw.text((1, 32), "Need: " + str(round(needed, 1)) + "cm", font=font)  # Write the Target Distance in cm
         disp.image(image)
